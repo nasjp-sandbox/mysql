@@ -36,10 +36,11 @@ func transactionOrder() error {
 
 	errCh := make(chan error)
 
-	// こっちのほうが後
 	go func() {
 		defer close(errCh)
 
+		// こっちのほうが後
+		// 行ロックがすでにかかっているのでtx1のcommitが行われるまでここでブロック
 		if err := exec(tx2, "UPDATE app.users SET first_name='saburo', last_name='kobayashi' WHERE id=1"); err != nil {
 			errCh <- err
 		}
@@ -50,7 +51,8 @@ func transactionOrder() error {
 	}()
 
 	// こっちが必ず先
-	// transactionが貼られたのが先だから
+	// transactionが貼られたのが先であるため
+	// 行ロックされる
 	if err := exec(tx1, "UPDATE app.users SET first_name='jiro', last_name='sato' WHERE id=1"); err != nil {
 		return err
 	}
