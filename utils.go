@@ -14,12 +14,6 @@ type database interface {
 	Query(query string, args ...interface{}) (*sql.Rows, error)
 }
 
-type user struct {
-	id        int
-	firstName string
-	lastName  string
-}
-
 func connect() (*sql.DB, error) {
 	db, err := sql.Open("mysql", fmt.Sprintf(
 		connectionTemplate,
@@ -45,12 +39,8 @@ func connect() (*sql.DB, error) {
 	return db, nil
 }
 
-func (u *user) String() string {
-	return fmt.Sprintf("id: %d, first_name: %s, last_name: %s", u.id, u.firstName, u.lastName)
-}
-
-func exec(db database, statement string) error {
-	result, err := db.Exec(statement)
+func exec(db database, statement string, args ...interface{}) error {
+	result, err := db.Exec(statement, args...)
 	if err != nil {
 		return err
 	}
@@ -60,6 +50,16 @@ func exec(db database, statement string) error {
 	}
 
 	return nil
+}
+
+type user struct {
+	id        int
+	firstName string
+	lastName  string
+}
+
+func (u *user) String() string {
+	return fmt.Sprintf("id: %d, first_name: %s, last_name: %s", u.id, u.firstName, u.lastName)
 }
 
 func selectUsersRecords(db database, query string) ([]*user, error) {
@@ -87,4 +87,41 @@ func selectUsersRecords(db database, query string) ([]*user, error) {
 	}
 
 	return users, nil
+}
+
+type status struct {
+	id           int
+	firstStatus  string
+	secondStatus string
+}
+
+func (u *status) String() string {
+	return fmt.Sprintf("id: %d, first_status: %s, second_status: %s", u.id, u.firstStatus, u.secondStatus)
+}
+
+func selectStatusRecords(db database, query string) ([]*status, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	statuses := make([]*status, 0)
+
+	for rows.Next() {
+		s := &status{}
+		if err := rows.Scan(&s.id, &s.firstStatus, &s.secondStatus); err != nil {
+			return nil, err
+		}
+
+		statuses = append(statuses, s)
+	}
+
+	if !rows.NextResultSet() {
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+	}
+
+	return statuses, nil
 }

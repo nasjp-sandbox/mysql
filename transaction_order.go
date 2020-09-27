@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
+	"sync"
 )
 
 func transactionOrder() error {
@@ -20,27 +23,62 @@ func transactionOrder() error {
 		return err
 	}
 
-	tx1, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	defer tx1.Rollback()
-
-	tx2, err := db.Begin()
-	if err != nil {
-		return err
-	}
-
-	defer tx2.Rollback()
-
 	errCh := make(chan error)
 
-	go func() {
-		defer close(errCh)
+	var wg sync.WaitGroup
 
-		// こっちのほうが後
-		// 行ロックがすでにかかっているのでtx1のcommitが行われるまでここでブロック
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		tx1, err := db.Begin()
+		if err != nil {
+			errCh <- err
+		}
+
+		defer func() {
+			if err := tx1.Rollback(); err != nil {
+				if errors.Is(err, sql.ErrTxDone) {
+					return
+				}
+
+				if err != nil {
+					errCh <- err
+				}
+			}
+		}()
+
+		if err := exec(tx1, "UPDATE app.users SET first_name='jiro', last_name='sato' WHERE id=1"); err != nil {
+			errCh <- err
+		}
+
+		if err := tx1.Commit(); err != nil {
+			errCh <- err
+		}
+	}()
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		tx2, err := db.Begin()
+		if err != nil {
+			errCh <- err
+		}
+
+		defer func() {
+			err := tx2.Rollback()
+			if errors.Is(err, sql.ErrTxDone) {
+				return
+			}
+
+			if err != nil {
+				errCh <- err
+			}
+		}()
+
 		if err := exec(tx2, "UPDATE app.users SET first_name='saburo', last_name='kobayashi' WHERE id=1"); err != nil {
 			errCh <- err
 		}
@@ -50,19 +88,15 @@ func transactionOrder() error {
 		}
 	}()
 
-	// こっちが必ず先
-	// transactionが貼られたのが先であるため
-	// 行ロックされる
-	if err := exec(tx1, "UPDATE app.users SET first_name='jiro', last_name='sato' WHERE id=1"); err != nil {
-		return err
-	}
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
 
-	if err := tx1.Commit(); err != nil {
-		return err
-	}
-
-	if err := <-errCh; err != nil {
-		return err
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
 	}
 
 	users, err := selectUsersRecords(db, "SELECT * FROM app.users")
@@ -72,6 +106,9 @@ func transactionOrder() error {
 
 	fmt.Println(users)
 	// [id: 1, first_name: saburo, last_name: kobayashi]
+	// [id: 1, first_name: jiro, last_name: sato]
+	// どちらになるかわからない
+	// 更新のロスト
 
 	return nil
 }
