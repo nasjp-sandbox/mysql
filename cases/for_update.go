@@ -27,6 +27,16 @@ func ForUpdate() error {
 		return err
 	}
 
+	tx1, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	tx2, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
 	errCh := make(chan error)
 
 	var wg sync.WaitGroup
@@ -35,46 +45,6 @@ func ForUpdate() error {
 
 	go func() {
 		defer wg.Done()
-
-		tx2, err := db.Begin()
-		if err != nil {
-			errCh <- err
-		}
-
-		defer func() {
-			err := tx2.Rollback()
-			if errors.Is(err, sql.ErrTxDone) {
-				return
-			}
-
-			if err != nil {
-				errCh <- err
-			}
-		}()
-		// statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1")
-		statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
-		if err != nil {
-			errCh <- err
-		}
-
-		if err := database.Exec(tx2, "UPDATE app.statuses SET first_status=?, second_status=1 WHERE id=1", statuses[0].FirstStatus); err != nil {
-			errCh <- err
-		}
-
-		if err := tx2.Commit(); err != nil {
-			errCh <- err
-		}
-	}()
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
-
-		tx1, err := db.Begin()
-		if err != nil {
-			errCh <- err
-		}
 
 		defer func() {
 			err := tx1.Rollback()
@@ -98,6 +68,37 @@ func ForUpdate() error {
 		}
 
 		if err := tx1.Commit(); err != nil {
+			errCh <- err
+		}
+	}()
+
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		defer func() {
+			err := tx2.Rollback()
+			if errors.Is(err, sql.ErrTxDone) {
+				return
+			}
+
+			if err != nil {
+				errCh <- err
+			}
+		}()
+
+		// statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1")
+		statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
+		if err != nil {
+			errCh <- err
+		}
+
+		if err := database.Exec(tx2, "UPDATE app.statuses SET first_status=?, second_status=1 WHERE id=1", statuses[0].FirstStatus); err != nil {
+			errCh <- err
+		}
+
+		if err := tx2.Commit(); err != nil {
 			errCh <- err
 		}
 	}()

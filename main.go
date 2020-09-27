@@ -17,7 +17,7 @@ func main() {
 }
 
 func run() error {
-	if err := cases.LostUpdate(); err != nil {
+	if err := cases.AtomicWrite(); err != nil {
 		return err
 	}
 
