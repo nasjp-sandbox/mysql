@@ -1,25 +1,29 @@
-package main
+package cases
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/nasjp-sandbox/mysql/database"
 )
 
-func transactionOrder() error {
-	db, err := connect()
+func LostUpdate() error {
+	fmt.Println("start: lost update")
+
+	db, err := database.Connect()
 	if err != nil {
 		return err
 	}
 
-	if err := exec(db, "CREATE TABLE IF NOT EXISTS app.users (id int, first_name varchar(10), last_name varchar(10))"); err != nil {
+	if err := database.Exec(db, "CREATE TABLE IF NOT EXISTS app.users (id int, first_name varchar(10), last_name varchar(10))"); err != nil {
 		return err
 	}
 
-	defer exec(db, "DROP TABLE IF EXISTS app.users")
+	defer database.Exec(db, "DROP TABLE IF EXISTS app.users")
 
-	if err := exec(db, "INSERT INTO app.users (id, first_name, last_name) VALUES (1, 'taro', 'tanaka')"); err != nil {
+	if err := database.Exec(db, "INSERT INTO app.users (id, first_name, last_name) VALUES (1, 'taro', 'tanaka')"); err != nil {
 		return err
 	}
 
@@ -49,7 +53,7 @@ func transactionOrder() error {
 			}
 		}()
 
-		if err := exec(tx1, "UPDATE app.users SET first_name='jiro', last_name='sato' WHERE id=1"); err != nil {
+		if err := database.Exec(tx1, "UPDATE app.users SET first_name='jiro', last_name='sato' WHERE id=1"); err != nil {
 			errCh <- err
 		}
 
@@ -79,7 +83,7 @@ func transactionOrder() error {
 			}
 		}()
 
-		if err := exec(tx2, "UPDATE app.users SET first_name='saburo', last_name='kobayashi' WHERE id=1"); err != nil {
+		if err := database.Exec(tx2, "UPDATE app.users SET first_name='saburo', last_name='kobayashi' WHERE id=1"); err != nil {
 			errCh <- err
 		}
 
@@ -99,7 +103,7 @@ func transactionOrder() error {
 		}
 	}
 
-	users, err := selectUsersRecords(db, "SELECT * FROM app.users")
+	users, err := database.SelectUsersRecords(db, "SELECT * FROM app.users")
 	if err != nil {
 		return err
 	}

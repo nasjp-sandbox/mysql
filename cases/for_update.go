@@ -1,25 +1,29 @@
-package main
+package cases
 
 import (
 	"database/sql"
 	"errors"
 	"fmt"
 	"sync"
+
+	"github.com/nasjp-sandbox/mysql/database"
 )
 
-func forUpdate() error {
-	db, err := connect()
+func ForUpdate() error {
+	fmt.Println("start: for update")
+
+	db, err := database.Connect()
 	if err != nil {
 		return err
 	}
 
-	if err := exec(db, "CREATE TABLE IF NOT EXISTS app.statuses (id int, first_status tinyint(1) NOT NULL, second_status tinyint(1) NOT NULL)"); err != nil {
+	if err := database.Exec(db, "CREATE TABLE IF NOT EXISTS app.statuses (id int, first_status tinyint(1) NOT NULL, second_status tinyint(1) NOT NULL)"); err != nil {
 		return err
 	}
 
-	defer exec(db, "DROP TABLE IF EXISTS app.statuses")
+	defer database.Exec(db, "DROP TABLE IF EXISTS app.statuses")
 
-	if err := exec(db, "INSERT INTO app.statuses (id, first_status, second_status) VALUES (1, 0, 0)"); err != nil {
+	if err := database.Exec(db, "INSERT INTO app.statuses (id, first_status, second_status) VALUES (1, 0, 0)"); err != nil {
 		return err
 	}
 
@@ -47,13 +51,13 @@ func forUpdate() error {
 				errCh <- err
 			}
 		}()
-		// statuses, err := selectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1")
-		statuses, err := selectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
+		// statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1")
+		statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
 		if err != nil {
 			errCh <- err
 		}
 
-		if err := exec(tx2, "UPDATE app.statuses SET first_status=?, second_status=1 WHERE id=1", statuses[0].firstStatus); err != nil {
+		if err := database.Exec(tx2, "UPDATE app.statuses SET first_status=?, second_status=1 WHERE id=1", statuses[0].FirstStatus); err != nil {
 			errCh <- err
 		}
 
@@ -83,13 +87,13 @@ func forUpdate() error {
 			}
 		}()
 
-		// statuses, err := selectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1")
-		statuses, err := selectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
+		// statuses, err := database.SelectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1")
+		statuses, err := database.SelectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
 		if err != nil {
 			errCh <- err
 		}
 
-		if err := exec(tx1, "UPDATE app.statuses SET first_status=1, second_status=? WHERE id=1", statuses[0].secondStatus); err != nil {
+		if err := database.Exec(tx1, "UPDATE app.statuses SET first_status=1, second_status=? WHERE id=1", statuses[0].SecondStatus); err != nil {
 			errCh <- err
 		}
 
@@ -109,7 +113,7 @@ func forUpdate() error {
 		}
 	}
 
-	results, err := selectStatusRecords(db, "SELECT * FROM app.statuses")
+	results, err := database.SelectStatusRecords(db, "SELECT * FROM app.statuses")
 	if err != nil {
 		return err
 	}
