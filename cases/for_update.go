@@ -17,7 +17,7 @@ func ForUpdate() error {
 		return err
 	}
 
-	if err := database.Exec(db, "CREATE TABLE IF NOT EXISTS app.statuses (id int, first_status tinyint(1) NOT NULL, second_status tinyint(1) NOT NULL)"); err != nil {
+	if err := database.Exec(db, "CREATE TABLE IF NOT EXISTS app.statuses (id int, first_status tinyint(1), second_status tinyint(1))"); err != nil {
 		return err
 	}
 
