@@ -9,7 +9,7 @@ import (
 	"github.com/nasjp-sandbox/mysql/database"
 )
 
-func LostUpdate() error {
+func AtomicWrite() error {
 	fmt.Println("start: atomic write")
 
 	db, err := database.Connect()
