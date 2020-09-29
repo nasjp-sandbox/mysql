@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/nasjp-sandbox/mysql/database"
+	"golang.org/x/sync/errgroup"
 )
 
 func AtomicWrite() error {
@@ -37,14 +37,10 @@ func AtomicWrite() error {
 		return err
 	}
 
-	errCh := make(chan error)
+	g := new(errgroup.Group)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
+	g.Go(func() error {
+		var rerr error
 
 		defer func() {
 			if err := tx1.Rollback(); err != nil {
@@ -53,25 +49,24 @@ func AtomicWrite() error {
 				}
 
 				if err != nil {
-					errCh <- err
+					rerr = err
 				}
 			}
 		}()
 
 		if err := database.Exec(tx1, "UPDATE app.counters SET count=count+1 WHERE id=1"); err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := tx1.Commit(); err != nil {
-			errCh <- err
+			return err
 		}
-	}()
 
-	wg.Add(1)
+		return rerr
+	})
 
-	go func() {
-		defer wg.Done()
-
+	g.Go(func() error {
+		var rerr error
 		defer func() {
 			err := tx2.Rollback()
 			if errors.Is(err, sql.ErrTxDone) {
@@ -79,28 +74,23 @@ func AtomicWrite() error {
 			}
 
 			if err != nil {
-				errCh <- err
+				rerr = err
 			}
 		}()
 
 		if err := database.Exec(tx2, "UPDATE app.counters SET count=count+1 WHERE id=1"); err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := tx2.Commit(); err != nil {
-			errCh <- err
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	for err := range errCh {
-		if err != nil {
 			return err
 		}
+
+		return rerr
+	})
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	counters, err := database.SelectUsersRecords(db, "SELECT * FROM app.counters")

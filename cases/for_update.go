@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/nasjp-sandbox/mysql/database"
+	"golang.org/x/sync/errgroup"
 )
 
 func ForUpdate() error {
@@ -37,14 +37,10 @@ func ForUpdate() error {
 		return err
 	}
 
-	errCh := make(chan error)
+	g := new(errgroup.Group)
 
-	var wg sync.WaitGroup
-
-	wg.Add(1)
-
-	go func() {
-		defer wg.Done()
+	g.Go(func() error {
+		var rerr error
 
 		defer func() {
 			err := tx1.Rollback()
@@ -53,29 +49,29 @@ func ForUpdate() error {
 			}
 
 			if err != nil {
-				errCh <- err
+				rerr = err
 			}
 		}()
 
 		// statuses, err := database.SelectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1")
 		statuses, err := database.SelectStatusRecords(tx1, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
 		if err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := database.Exec(tx1, "UPDATE app.statuses SET first_status=1, second_status=? WHERE id=1", statuses[0].SecondStatus); err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := tx1.Commit(); err != nil {
-			errCh <- err
+			return err
 		}
-	}()
 
-	wg.Add(1)
+		return rerr
+	})
 
-	go func() {
-		defer wg.Done()
+	g.Go(func() error {
+		var rerr error
 
 		defer func() {
 			err := tx2.Rollback()
@@ -84,34 +80,29 @@ func ForUpdate() error {
 			}
 
 			if err != nil {
-				errCh <- err
+				rerr = err
 			}
 		}()
 
 		// statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1")
 		statuses, err := database.SelectStatusRecords(tx2, "SELECT * FROM app.statuses WHERE id=1 FOR UPDATE")
 		if err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := database.Exec(tx2, "UPDATE app.statuses SET first_status=?, second_status=1 WHERE id=1", statuses[0].FirstStatus); err != nil {
-			errCh <- err
+			return err
 		}
 
 		if err := tx2.Commit(); err != nil {
-			errCh <- err
-		}
-	}()
-
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-
-	for err := range errCh {
-		if err != nil {
 			return err
 		}
+
+		return rerr
+	})
+
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	results, err := database.SelectStatusRecords(db, "SELECT * FROM app.statuses")
